@@ -6,8 +6,7 @@ using QuirrelBasic.Services;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "drives_config.json"), optional: false, reloadOnChange: true);
-DrivesConfig drivesConfig = builder.Configuration.GetSection("GoogleDrive").Get<DrivesConfig>()
-    ?? throw new Exception("You need drives_config.json with a valid 'GoogleDrive' section to run this program");
+DrivesConfig drivesConfig = new DrivesConfig(args[0], args[1]);
 
 builder.Services.AddLogging();
 builder.Services.AddTransient<IDriveService>(x => new GoogleDriveService(
