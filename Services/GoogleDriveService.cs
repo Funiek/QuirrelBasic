@@ -1,128 +1,100 @@
-﻿using Google.Apis.Auth.OAuth2;
+using Google.Apis.Auth.OAuth2;
+using Google.Apis.Auth.OAuth2.Flows;
 using Google.Apis.Drive.v3;
 using Google.Apis.Services;
+using Google.Apis.Util.Store;
+using Google.Apis.Upload;
+using Google.Apis.Download;
+using System.Security.Cryptography;
 using QuirrelBasic.IServices;
 using QuirrelBasic.Models;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using GFile = Google.Apis.Drive.v3.Data.File;
 
-namespace QuirrelBasic.Services
+namespace QuirrelBasic.Services;
+public sealed class GoogleDriveService(DriveService drive) : IDriveService, IDisposable
 {
-    public class GoogleDriveService : IDriveService
+    private const string Fields = "id,name,mimeType,modifiedTime,md5Checksum,size,trashed";
+    public const string FolderMime = "application/vnd.google-apps.folder";
+    public static async Task<GoogleDriveService> ConnectAsync(DrivesConfig config, bool authorize, CancellationToken token)
     {
-        private readonly ILogger _logger;
-        private DriveService _driveService = null!;
-        private readonly string _googleDriveFolderId;
-        private readonly string _credentialsFilePath;
-
-        public GoogleDriveService(ILogger logger, string googleDriveFolderId, string credentialsFilePath)
+        using var stream = File.OpenRead(config.GoogleClientSecretPath);
+        var secrets = GoogleClientSecrets.FromStream(stream).Secrets;
+        var store = new FileDataStore(Path.Combine(config.DataDirectory, "tokens"), true);
+        UserCredential credential;
+        if (authorize)
+            credential = await GoogleWebAuthorizationBroker.AuthorizeAsync(secrets, [DriveService.Scope.Drive], "quirrel", token, store);
+        else
         {
-            _logger = logger;
-            _googleDriveFolderId = googleDriveFolderId;
-            _credentialsFilePath = credentialsFilePath;
+            var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
+            { ClientSecrets = secrets, Scopes = [DriveService.Scope.Drive], DataStore = store });
+            var saved = await flow.LoadTokenAsync("quirrel", token);
+            if (saved?.RefreshToken == null) throw new InvalidOperationException("Run authorize interactively before starting the service.");
+            credential = new UserCredential(flow, "quirrel", saved);
         }
-
-        public async Task InitializeDriveServiceAsync(CancellationToken stoppingToken)
-        {
-            if (_driveService is not null)
-            {
-                _logger.LogInformation("Google Drive service is already initialized.");
-                return;
-            }
-
-            try
-            {
-                using (var stream = new FileStream(_credentialsFilePath, FileMode.Open, FileAccess.Read))
-                {
-                    var credential = await GoogleWebAuthorizationBroker.AuthorizeAsync(
-                        GoogleClientSecrets.FromStream(stream).Secrets,
-                        new[] { "https://www.googleapis.com/auth/drive" },
-                        "quirrel-client",
-                        stoppingToken);
-
-                    _driveService = new DriveService(new BaseClientService.Initializer
-                    {
-                        HttpClientInitializer = credential,
-                        ApplicationName = "Quirrel"
-                    });
-
-                    _logger.LogInformation("Google Drive service initialized successfully.");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Failed to initialize Google Drive service: {ex.Message}");
-                throw;
-            }
-        }
-
-        private void EnsureInitialized()
-        {
-            if (_driveService is null)
-            {
-                throw new InvalidOperationException("GoogleDriveService is not initialized. Call InitializeGoogleDriveServiceAsync first.");
-            }
-        }
-
-        public async Task<List<DriveFile>> ListFilesInFolderAsync(CancellationToken stoppingToken)
-        {
-            var files = new List<DriveFile>();
-
-            try
-            {
-                EnsureInitialized();
-                var request = _driveService.Files.List();
-                request.Q = $"'{_googleDriveFolderId}' in parents and trashed = false";
-                request.Fields = "files(id, name, modifiedTime)";
-
-                var result = await request.ExecuteAsync(stoppingToken);
-
-                if (result.Files != null && result.Files.Count > 0)
-                {
-                    foreach (var file in result.Files)
-                    {
-                        files.Add(new DriveFile
-                        {
-                            Id = file.Id,
-                            Name = file.Name,
-                            ModifiedTime = file.ModifiedTimeDateTimeOffset
-                        });
-                    }
-                }
-                else
-                {
-                    _logger.LogInformation("No files found in the specified folder.");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"An error occurred while listing files: {ex.Message}");
-            }
-
-            return files;
-        }
-
-        public Task GetFile(string fileName, CancellationToken stoppingToken)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task UploadFile(string fileName, CancellationToken stoppingToken)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task DeleteFile(string fileName, CancellationToken stoppingToken)
-        {
-            throw new NotImplementedException();
-        }
-
-        public String getToken()
-        {
-            return _credentialsFilePath;
-        }
+        return new GoogleDriveService(new DriveService(new BaseClientService.Initializer { HttpClientInitializer = credential, ApplicationName = "QuirrelBasic" }));
     }
+    private static DriveFile Map(GFile file)
+    {
+        if (file.Trashed == true) throw new IOException("Google Drive item is in trash.");
+        var supported = !file.MimeType.StartsWith("application/vnd.google-apps.") || file.MimeType == FolderMime;
+        return new(file.Id, file.Name, file.MimeType == FolderMime, file.ModifiedTimeDateTimeOffset ?? DateTimeOffset.MinValue, file.Md5Checksum, file.Size, supported);
+    }
+    public async Task<DriveFile> GetAsync(string id, CancellationToken token)
+    {
+        var request = drive.Files.Get(id); request.Fields = Fields;
+        return Map(await request.ExecuteAsync(token));
+    }
+    public async Task<IReadOnlyList<DriveFile>> ListAsync(string parentId, CancellationToken token)
+    {
+        var result = new List<DriveFile>(); string? page = null;
+        do
+        {
+            var request = drive.Files.List();
+            request.Q = $"'{parentId.Replace("\\", "\\\\").Replace("'", "\\'")}' in parents and trashed = false";
+            request.Fields = $"nextPageToken,files({Fields})"; request.PageSize = 1000; request.PageToken = page;
+            var response = await request.ExecuteAsync(token);
+            result.AddRange(response.Files.Select(Map)); page = response.NextPageToken;
+        } while (page != null);
+        return result;
+    }
+    public async Task<DriveFile> CreateFolderAsync(string parentId, string name, CancellationToken token)
+    {
+        var request = drive.Files.Create(new GFile { Name = name, MimeType = FolderMime, Parents = [parentId] });
+        request.Fields = Fields;
+        return Map(await request.ExecuteAsync(token));
+    }
+    public async Task DownloadAsync(string id, Stream target, CancellationToken token)
+    {
+        var result = await drive.Files.Get(id).DownloadAsync(target, token);
+        if (result.Status != DownloadStatus.Completed) throw result.Exception ?? new IOException("Download failed.");
+    }
+    public async Task UploadAsync(string parentId, string name, string? id, Stream source, DateTimeOffset modified, CancellationToken token)
+    {
+        source.Position = 0;
+        var expectedHash = Convert.ToHexString(await MD5.HashDataAsync(source, token));
+        source.Position = 0;
+        var metadata = new GFile { ModifiedTimeDateTimeOffset = modified };
+        IUploadProgress result;
+        GFile? uploaded;
+        if (id == null)
+        {
+            metadata.Name = name; metadata.Parents = [parentId];
+            var request = drive.Files.Create(metadata, source, "application/octet-stream");
+            request.Fields = Fields;
+            result = await request.UploadAsync(token);
+            uploaded = request.ResponseBody;
+        }
+        else
+        {
+            var request = drive.Files.Update(metadata, id, source, "application/octet-stream");
+            request.Fields = Fields;
+            result = await request.UploadAsync(token);
+            uploaded = request.ResponseBody;
+        }
+        if (result.Status != UploadStatus.Completed) throw result.Exception ?? new IOException("Upload failed.");
+        if (uploaded == null || uploaded.Size != source.Length ||
+            !expectedHash.Equals(uploaded.Md5Checksum, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Google Drive upload checksum or size mismatch.");
+    }
+    public void Dispose() => drive.Dispose();
 }

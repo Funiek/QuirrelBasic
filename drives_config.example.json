@@ -1,0 +1,22 @@
+{
+  "GoogleClientSecretPath": "client_secret.json",
+  "DataDirectory": "data",
+  "IntervalSeconds": 60,
+  "SettleSeconds": 10,
+  "Pairs": [
+    {
+      "LocalPath": "C:\\Users\\zaba\\AppData\\Roaming\\DarkSoulsIII\\011000010572cb8f",
+      "GoogleRootId": "root",
+      "RemotePath": "QuirrelBasic/DarkSoulsIII/011000010572cb8f",
+      "Kind": "Folder",
+      "PauseWhileProcessesRunning": ["DarkSoulsIII"]
+    },
+    {
+      "LocalPath": "C:\\Users\\zaba\\AppData\\Roaming\\.minecraft\\saves",
+      "GoogleRootId": "root",
+      "RemotePath": "QuirrelBasic/Minecraft/saves",
+      "Kind": "Folder",
+      "PauseWhileProcessesRunning": ["java", "javaw"]
+    }
+  ]
+}

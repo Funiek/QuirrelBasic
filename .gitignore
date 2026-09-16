@@ -363,3 +363,5 @@ MigrationBackup/
 FodyWeavers.xsd
 /client_secret.json
 /drives_config.json
+/data/
+/publish/

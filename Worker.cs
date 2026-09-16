@@ -1,41 +1,17 @@
-using Google.Apis.Auth.OAuth2;
-using Google.Apis.Drive.v3;
-using Google.Apis.Services;
-using QuirrelBasic.IServices;
 using QuirrelBasic.Models;
 using QuirrelBasic.Services;
+namespace QuirrelBasic;
 
-namespace QuirrelBasic
+public sealed class Worker(SyncEngine engine, DrivesConfig config, ILogger<Worker> logger) : BackgroundService
 {
-    public class Worker : BackgroundService
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        private readonly ILogger<Worker> _logger;
-        private readonly IDriveService _driveService;
-
-        public Worker(ILogger<Worker> logger, IDriveService driveService)
+        while (!stoppingToken.IsCancellationRequested)
         {
-            _logger = logger;
-            _driveService = driveService;
-        }
-
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-        {
-            await _driveService.InitializeDriveServiceAsync(stoppingToken);
-            var folderFiles = await _driveService.ListFilesInFolderAsync(stoppingToken);
-
-            foreach (var file in folderFiles)
-            {
-                _logger.LogInformation(file.ToString());
-            }
-
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                if (_logger.IsEnabled(LogLevel.Information))
-                {
-                    _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-                    await Task.Delay(1000, stoppingToken);
-                }
-            }
+            try { await engine.RunAsync(false, stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception ex) { logger.LogError(ex, "Synchronization failed. Retrying after the configured interval."); }
+            await Task.Delay(TimeSpan.FromSeconds(config.IntervalSeconds), stoppingToken);
         }
     }
 }

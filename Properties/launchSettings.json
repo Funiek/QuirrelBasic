@@ -2,7 +2,7 @@
   "profiles": {
     "QuirrelBasic": {
       "commandName": "Project",
-      "commandLineArgs": "your_client_secret.json your_folder_id",
+      "commandLineArgs": "--help",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       },
