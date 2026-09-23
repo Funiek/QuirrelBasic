@@ -86,6 +86,27 @@ Restart-Service QuirrelBasic
 
 Deinstalacja zachowuje konfigurację i dane. Alternatywnie `QuirrelBasic.exe run` działa w konsoli bez instalowania usługi.
 
+## Uruchamianie ręczne i autostart po zalogowaniu
+
+W opublikowanym pakiecie można uruchomić `scripts/Start-Quirrel.cmd`. Domyślnie korzysta z `drives_config.json` obok programu. Opcjonalny pierwszy argument wskazuje inną konfigurację. Okno konsoli pozostaje otwarte; Ctrl+C zatrzymuje proces.
+
+`scripts/Start-Quirrel.ps1` uruchamia aplikację bez widocznego okna, a `scripts/Stop-Quirrel.ps1` zatrzymuje procesy uruchomione z tego konkretnego katalogu programu. Zatrzymanie przez skrypt Stop jest wymuszone: przerwany transfer zostanie ponowiony po uruchomieniu. Skrypty PowerShell wymagają polityki wykonywania, która pozwala je uruchamiać. Skrypt CMD uruchamia program bezpośrednio. Dla zainstalowanej usługi używaj poleceń Start-Service i Stop-Service.
+
+Jeżeli aplikacja ma działać dopiero po zalogowaniu do Windows, wystarczy zadanie w Harmonogramie zadań. Nie instaluj równocześnie usługi uruchamiającej tę samą konfigurację.
+
+1. Utwórz zadanie z wyzwalaczem **Przy logowaniu** na Twoje konto.
+2. W akcji **Uruchom program** podaj:
+   - Program: pełna ścieżka do `QuirrelBasic.exe`.
+   - Argumenty: `run "C:\\Apps\\QuirrelBasic\\drives_config.json"` (wstaw własną ścieżkę).
+   - Rozpocznij w: katalog zawierający EXE, bez cudzysłowów.
+3. Wybierz **Uruchom tylko wtedy, gdy użytkownik jest zalogowany**, bez najwyższych uprawnień.
+4. Wyłącz limit **Zatrzymaj zadanie, jeśli działa dłużej niż...**. Dla kolejnego wystąpienia wybierz **Nie uruchamiaj nowego wystąpienia**.
+5. Na laptopie dostosuj warunki zasilania, jeśli synchronizacja ma działać również na baterii.
+
+Takie zadanie używa uprawnień zalogowanego użytkownika i nie wymaga zapisywania jego hasła. Bezpośrednie uruchomienie EXE może wyświetlić konsolę; opcja **Ukryte** w Harmonogramie nie ukrywa okna programu. Skrypt Start-Quirrel.ps1 uruchamia odłączony proces, więc Harmonogram nie śledzi wtedy czasu działania samego synchronizatora.
+
+Po zmianie listy Pairs zatrzymaj i ponownie uruchom program. Nie przenoś ani nie usuwaj wskazanej konfiguracji, katalogu danych ani pliku klienta OAuth.
+
 ## Save'y, kopie i ograniczenia
 
 Przykład wstrzymuje Dark Souls III podczas procesu `DarkSoulsIII`, a Minecraft podczas `java` lub `javaw` (dotyczy też innych programów Java). Zamknij grę i zaczekaj na zakończenie synchronizacji przed uruchomieniem jej na drugim komputerze. Synchronizacja jest wykonywana plik po pliku, nie stanowi transakcji całego świata Minecraft.

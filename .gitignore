@@ -365,3 +365,6 @@ FodyWeavers.xsd
 /drives_config.json
 /data/
 /publish/
+**/client_secret*.json
+**/drives_config.json
+**/tokens/
