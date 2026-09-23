@@ -1,19 +1,10 @@
-﻿using Google.Apis.Drive.v3;
 using QuirrelBasic.Models;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace QuirrelBasic.IServices
+namespace QuirrelBasic.IServices;
+public interface IDriveService
 {
-    public interface IDriveService
-    {
-        Task<List<DriveFile>> ListFilesInFolderAsync(CancellationToken stoppingToken);
-        Task GetFile(string fileName, CancellationToken stoppingToken);
-        Task UploadFile(string fileName, CancellationToken stoppingToken);
-        Task DeleteFile(string fileName, CancellationToken stoppingToken);
-        Task InitializeDriveServiceAsync(CancellationToken stoppingToken);
-    }
+    Task<IReadOnlyList<DriveFile>> ListAsync(string parentId, CancellationToken token);
+    Task<DriveFile> GetAsync(string id, CancellationToken token);
+    Task<DriveFile> CreateFolderAsync(string parentId, string name, CancellationToken token);
+    Task DownloadAsync(string id, Stream target, CancellationToken token);
+    Task UploadAsync(string parentId, string name, string? id, Stream source, DateTimeOffset modified, CancellationToken token);
 }

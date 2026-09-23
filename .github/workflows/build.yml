@@ -1,0 +1,27 @@
+name: Build and synchronization tests
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet build QuirrelBasic.csproj -c Release
+      - run: dotnet run --project tests/QuirrelBasic.Tests.csproj -c Release
+      - run: dotnet publish QuirrelBasic.csproj -c Release -r win-x64 --self-contained true -o publish
+      - name: Include setup files
+        shell: pwsh
+        run: |
+          Copy-Item drives_config.example.json publish/drives_config.json
+          Copy-Item drives_config.example.json, README.md, LICENSE.txt publish/
+          Copy-Item scripts publish/ -Recurse
+          ./publish/QuirrelBasic.exe validate ./publish/drives_config.json
+          if ($LASTEXITCODE -ne 0) { throw 'Configuration smoke test failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QuirrelBasic-win-x64
+          path: publish/
